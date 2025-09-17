@@ -76,6 +76,28 @@
   },
   "packageManager": "yarn@3.6.4",
   "dependencies": {
-    "@spider-rs/spider-rs": "^0.0.157"
+    "@spider-rs/spider-rs": "^0.0.157",
+    "axios": "^1.12.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.1"
+  },
+  "optionalDependencies": {
+    "@spider-rs/spider-rs-android-arm-eabi": "0.0.162",
+    "@spider-rs/spider-rs-android-arm64": "0.0.162",
+    "@spider-rs/spider-rs-darwin-arm64": "0.0.162",
+    "@spider-rs/spider-rs-darwin-universal": "0.0.162",
+    "@spider-rs/spider-rs-darwin-x64": "0.0.162",
+    "@spider-rs/spider-rs-freebsd-x64": "0.0.162",
+    "@spider-rs/spider-rs-linux-arm-gnueabihf": "0.0.162",
+    "@spider-rs/spider-rs-linux-arm64-gnu": "0.0.162",
+    "@spider-rs/spider-rs-linux-arm64-musl": "0.0.162",
+    "@spider-rs/spider-rs-linux-x64-gnu": "^0.0.157",
+    "@spider-rs/spider-rs-linux-x64-musl": "0.0.162",
+    "@spider-rs/spider-rs-win32-arm64-msvc": "0.0.162",
+    "@spider-rs/spider-rs-win32-ia32-msvc": "0.0.162",
+    "@spider-rs/spider-rs-win32-x64-msvc": "0.0.162"
   }
 }

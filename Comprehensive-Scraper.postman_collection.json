@@ -1,0 +1,116 @@
+{
+  "info": {
+    "name": "Comprehensive Scraper API",
+    "description": "Rust-powered high-performance web scraping API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Basic Scraping",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"https://njdesignpark.com\",\n  \"maxPages\": 5,\n  \"extractImages\": true,\n  \"extractLinks\": true,\n  \"extractMeta\": true,\n  \"detectTechnologies\": true,\n  \"detectCMS\": true,\n  \"detectPlugins\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/scrap",
+          "host": ["{{base_url}}"],
+          "path": ["scrap"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "High-Performance Scraping",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"https://example.com\",\n  \"maxPages\": 20,\n  \"extractImages\": true,\n  \"extractLinks\": true,\n  \"extractMeta\": true,\n  \"detectTechnologies\": true,\n  \"detectCMS\": true,\n  \"detectPlugins\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/scrap",
+          "host": ["{{base_url}}"],
+          "path": ["scrap"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "WordPress Detection",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"https://wordpress.org\",\n  \"maxPages\": 10,\n  \"extractImages\": true,\n  \"extractLinks\": true,\n  \"extractMeta\": true,\n  \"detectTechnologies\": true,\n  \"detectCMS\": true,\n  \"detectPlugins\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/scrap",
+          "host": ["{{base_url}}"],
+          "path": ["scrap"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "E-commerce Site (Shopify)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"https://shopify.com\",\n  \"maxPages\": 15,\n  \"extractImages\": true,\n  \"extractLinks\": true,\n  \"extractMeta\": true,\n  \"detectTechnologies\": true,\n  \"detectCMS\": true,\n  \"detectPlugins\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/scrap",
+          "host": ["{{base_url}}"],
+          "path": ["scrap"]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000"
+    }
+  ]
+}

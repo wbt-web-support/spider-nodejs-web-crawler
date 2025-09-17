@@ -42,9 +42,11 @@ impl Page {
       /// top level single page client to re-use.
       pub static ref PAGE_CLIENT: ClientWithMiddleware = {
         let reqwest_client = Client::builder().build().unwrap_or_default();
-        let client = ClientBuilder::new(reqwest_client).build();
+        let client = ClientBuilder::new().build().unwrap_or_else(|_| {
+          ClientBuilder::new().build().unwrap_or_default()
+        });
 
-        client
+        client.into()
       };
     }
     let page = spider::page::Page::new_page(&self.url, &PAGE_CLIENT).await;

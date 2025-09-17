@@ -1,0 +1,87 @@
+{
+  "url": "https://example.com",
+  "mode": "single",
+  "summary": {
+    "totalPages": 1,
+    "totalLinks": 5,
+    "totalImages": 3,
+    "totalMetaTags": 8,
+    "technologiesFound": 2,
+    "cmsDetected": false,
+    "totalHtmlContent": 1250,
+    "averageHtmlPerPage": 1250
+  },
+  "pages": [
+    {
+      "url": "https://example.com",
+      "statusCode": 200,
+      "title": "Example Domain",
+      "html": "<!DOCTYPE html><html><head><title>Example Domain</title></head><body><h1>Example Domain</h1><p>This domain is for use in illustrative examples...</p></body></html>",
+      "htmlContentLength": 1250,
+      "links": [
+        {
+          "href": "https://www.iana.org/domains/example",
+          "text": "More information...",
+          "isExternal": true
+        }
+      ],
+      "images": [
+        {
+          "src": "https://example.com/logo.png",
+          "fullTag": "<img src=\"https://example.com/logo.png\" alt=\"Logo\">"
+        }
+      ],
+      "metaTags": [
+        {
+          "name": "description",
+          "content": "Example domain for testing",
+          "fullTag": "<meta name=\"description\" content=\"Example domain for testing\">"
+        }
+      ],
+      "technologies": ["HTML5", "CSS3"],
+      "timestamp": "2025-09-17T13:00:00.000Z"
+    }
+  ],
+  "extractedData": {
+    "links": [
+      "https://example.com/",
+      "https://www.iana.org/domains/example",
+      "https://example.com/about",
+      "https://example.com/contact",
+      "https://example.com/services"
+    ],
+    "images": [
+      "https://example.com/logo.png",
+      "https://example.com/banner.jpg",
+      "https://example.com/hero-image.png"
+    ],
+    "metaTags": [
+      {
+        "name": "description",
+        "content": "Example domain for testing",
+        "fullTag": "<meta name=\"description\" content=\"Example domain for testing\">"
+      },
+      {
+        "name": "keywords",
+        "content": "example, domain, test",
+        "fullTag": "<meta name=\"keywords\" content=\"example, domain, test\">"
+      }
+    ],
+    "technologies": ["HTML5", "CSS3"],
+    "cms": {
+      "type": "unknown",
+      "version": null,
+      "plugins": []
+    }
+  },
+  "performance": {
+    "startTime": "2025-09-17T13:00:00.000Z",
+    "endTime": "2025-09-17T13:00:01.500Z",
+    "totalTime": 1500,
+    "pagesPerSecond": 0.67,
+    "totalHtmlContent": 1250,
+    "averageHtmlPerPage": 1250
+  },
+  "responseTime": 1500,
+  "timestamp": "2025-09-17T13:00:01.500Z"
+}
