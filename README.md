@@ -14,7 +14,7 @@ const website = new Website('https://rsseau.fr')
     authorization: 'somerandomjwt',
   })
   .withBudget({
-    '*': 20, // limit max request 20 pages for the website
+    '*': 50, // limit max request 20 pages for the website
     '/docs': 10, // limit only 10 pages on the `/docs` paths
   })
   .withBlacklistUrl(['/resume']) // regex or pattern matching to ignore paths
@@ -143,3 +143,5 @@ The benches above were ran on a mac m1, spider on linux arm machines performs ab
 Install the napi cli `npm i @napi-rs/cli --global`.
 
 1. `yarn build:test`
+# spider-nodejs
+# spider-nodejs
