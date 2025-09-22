@@ -278,85 +278,85 @@ app.post('/scrap', async (req, res) => {
     
     if (useNativeModule) {
       // Use real Rust-based spider-rs crawler
-      try {
-        // Create website instance with budget configuration
-        const website = new Website(url).withBudget({ '*': maxPages, licenses: 0 }).build();
-        
-        // Collect pages during crawling
-        const crawledPages = [];
-        
-        const onPageEvent = (err, page) => {
-          if (err) {
-            console.error('Page crawl error:', err);
-            return;
-          }
-          
-          console.log(`📄 Found page: ${page.url}`);
-          crawledPages.push(page);
-        };
-        
-        // Perform the actual crawling
-        await website.crawl(onPageEvent);
-        
-        // Get all links found by the spider (like in basic.mjs)
-        const spiderLinks = website.getLinks();
-        console.log(`🔗 Spider found ${spiderLinks.length} total links`);
-        
-        // Process crawled pages
-        for (const page of crawledPages) {
-          const html = page.content || '';
-          const pageUrl = page.url;
-          const statusCode = page.status_code || 200;
-          
-          // Extract data for each page
-          const title = extractTitle(html);
-          const links = extractLinksFlag ? extractLinks(html, pageUrl) : [];
-          const images = extractImagesFlag ? extractImages(html) : [];
-          const metaTags = extractMeta ? extractMetaTags(html) : [];
-          const technologies = detectTechnologiesFlag ? detectTechnologies(html, pageUrl) : [];
-          
-          // Update global collections
-          allLinks.push(...links.map(l => l.href));
-          allImages.push(...images.map(i => i.src));
-          allMetaTags.push(...metaTags);
-          allTechnologies.push(...technologies);
-          
-          // Detect CMS from first page
-          if (pages.length === 0) {
-            cms = detectCMSFlag ? detectCMS(html, pageUrl) : { type: 'unknown', version: null, plugins: [] };
-          }
-          
-          pages.push({
-            url: pageUrl,
-            statusCode: statusCode,
-            title: title,
-            html: html,
-            links: links,
-            images: images,
-            metaTags: metaTags,
-            technologies: technologies,
-            timestamp: new Date().toISOString()
-          });
-          
-          // For single page mode, break after first page
-          if (mode === 'single') {
-            break;
-          }
+    try {
+      // Create website instance with budget configuration
+      const website = new Website(url).withBudget({ '*': maxPages, licenses: 0 }).build();
+      
+      // Collect pages during crawling
+      const crawledPages = [];
+      
+      const onPageEvent = (err, page) => {
+        if (err) {
+          console.error('Page crawl error:', err);
+          return;
         }
         
-        // Combine spider links with extracted links and remove duplicates
-        allLinks = [...new Set([...allLinks, ...spiderLinks])];
-        allImages = [...new Set(allImages)];
-        allTechnologies = [...new Set(allTechnologies)];
+        console.log(`📄 Found page: ${page.url}`);
+        crawledPages.push(page);
+      };
+      
+      // Perform the actual crawling
+      await website.crawl(onPageEvent);
+      
+      // Get all links found by the spider (like in basic.mjs)
+      const spiderLinks = website.getLinks();
+      console.log(`🔗 Spider found ${spiderLinks.length} total links`);
+      
+      // Process crawled pages
+      for (const page of crawledPages) {
+        const html = page.content || '';
+        const pageUrl = page.url;
+        const statusCode = page.status_code || 200;
         
-        console.log(`✅ Crawled ${pages.length} pages successfully`);
+        // Extract data for each page
+        const title = extractTitle(html);
+        const links = extractLinksFlag ? extractLinks(html, pageUrl) : [];
+        const images = extractImagesFlag ? extractImages(html) : [];
+        const metaTags = extractMeta ? extractMetaTags(html) : [];
+        const technologies = detectTechnologiesFlag ? detectTechnologies(html, pageUrl) : [];
         
-        // If no pages were crawled, return empty data instead of error
+        // Update global collections
+        allLinks.push(...links.map(l => l.href));
+        allImages.push(...images.map(i => i.src));
+        allMetaTags.push(...metaTags);
+        allTechnologies.push(...technologies);
+        
+        // Detect CMS from first page
         if (pages.length === 0) {
-          console.log('⚠️ No pages were successfully crawled');
+          cms = detectCMSFlag ? detectCMS(html, pageUrl) : { type: 'unknown', version: null, plugins: [] };
         }
         
-      } catch (crawlError) {
+        pages.push({
+          url: pageUrl,
+          statusCode: statusCode,
+          title: title,
+          html: html,
+          links: links,
+          images: images,
+          metaTags: metaTags,
+          technologies: technologies,
+          timestamp: new Date().toISOString()
+        });
+        
+        // For single page mode, break after first page
+        if (mode === 'single') {
+          break;
+        }
+      }
+      
+      // Combine spider links with extracted links and remove duplicates
+      allLinks = [...new Set([...allLinks, ...spiderLinks])];
+      allImages = [...new Set(allImages)];
+      allTechnologies = [...new Set(allTechnologies)];
+      
+      console.log(`✅ Crawled ${pages.length} pages successfully`);
+      
+      // If no pages were crawled, return empty data instead of error
+      if (pages.length === 0) {
+        console.log('⚠️ No pages were successfully crawled');
+      }
+      
+    } catch (crawlError) {
         console.error('Native crawling error:', crawlError);
         console.log('⚠️ Falling back to HTTP method');
         useNativeModule = false;
@@ -406,11 +406,23 @@ app.post('/scrap', async (req, res) => {
         
           // For multipage mode, try to crawl additional pages
         if (mode === 'multipage' && pages.length < maxPages) {
-          const internalLinks = links
-            .filter(link => !link.isExternal && link.href.startsWith('http'))
-            .slice(0, Math.min(maxPages * 2, 1000)); // Limit to prevent infinite loops
+          // Function to collect all internal links from pages
+          function collectInternalLinks(pages) {
+            let allLinks = [];
+            for (const page of pages) {
+              if (page.links && page.links.length > 0) {
+                allLinks.push(...page.links);
+              }
+            }
+            return allLinks
+              .filter(link => !link.isExternal && link.href && link.href.startsWith('http'))
+              .map(link => link.href)
+              .filter((href, index, self) => self.indexOf(href) === index); // Remove duplicates
+          }
           
-          console.log(`🔗 Found ${internalLinks.length} internal links to crawl`);
+          // Initial collection of links
+          let internalLinks = collectInternalLinks(pages);
+          console.log(`🔗 Found ${internalLinks.length} internal links to crawl (from ${pages.length} pages)`);
           
           // Check if this is GitHub (more aggressive rate limiting)
           const isGitHub = url.includes('github.com');
@@ -420,10 +432,10 @@ app.post('/scrap', async (req, res) => {
           
           let successCount = 0;
           let errorCount = 0;
-          const maxErrors = isGitHub ? Math.min(30, maxPages) : Math.min(20, maxPages); // More tolerance for GitHub
+          const maxErrors = Math.min(maxPages * 0.3, 100); // 30% of maxPages or 100, whichever is smaller
           const retryAttempts = isGitHub ? 3 : 2; // More retries for GitHub
           const startTime = Date.now();
-          const maxCrawlTime = process.env.NODE_ENV === 'production' ? 300000 : 600000; // 5 min in prod, 10 min locally
+          const maxCrawlTime = process.env.NODE_ENV === 'production' ? 600000 : 1200000; // 10 min in prod, 20 min locally
           
           // Track visited pages to avoid duplicates
           const visitedPages = new Set();
@@ -445,7 +457,7 @@ app.post('/scrap', async (req, res) => {
           
           visitedPages.add(normalizeUrl(url)); // Add the main page
           
-          for (const link of internalLinks) {
+          for (const linkUrl of internalLinks) {
             if (pages.length >= maxPages) {
               console.log(`✅ Reached max pages limit: ${maxPages}`);
               break;
@@ -463,11 +475,11 @@ app.post('/scrap', async (req, res) => {
             }
             
             // Normalize the URL for comparison
-            const normalizedUrl = normalizeUrl(link.href);
+            const normalizedUrl = normalizeUrl(linkUrl);
             
             // Skip if we've already visited this page
             if (visitedPages.has(normalizedUrl)) {
-              console.log(`⏭️ Skipping already visited page: ${link.href} (normalized: ${normalizedUrl})`);
+              console.log(`⏭️ Skipping already visited page: ${linkUrl} (normalized: ${normalizedUrl})`);
               continue;
             }
             
@@ -481,10 +493,10 @@ app.post('/scrap', async (req, res) => {
             for (let attempt = 1; attempt <= retryAttempts && !pageCrawled; attempt++) {
               try {
                 if (attempt > 1) {
-                  console.log(`🔄 Retry attempt ${attempt}/${retryAttempts} for: ${link.href}`);
+                  console.log(`🔄 Retry attempt ${attempt}/${retryAttempts} for: ${linkUrl}`);
                   await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay for retries
                 } else {
-                  console.log(`📄 Crawling page ${pages.length + 1}/${maxPages}: ${link.href}`);
+                  console.log(`📄 Crawling page ${pages.length + 1}/${maxPages}: ${linkUrl}`);
                   console.log(`📊 Progress: ${successCount} success, ${errorCount} errors, ${Math.round((Date.now() - startTime) / 1000)}s elapsed`);
                 }
                 
@@ -494,7 +506,7 @@ app.post('/scrap', async (req, res) => {
                   await new Promise(resolve => setTimeout(resolve, delay));
                 }
                 
-                  const additionalPage = await fetchPageWithAxios(link.href);
+                  const additionalPage = await fetchPageWithAxios(linkUrl);
                 const addHtml = additionalPage.content;
                 const addPageUrl = additionalPage.url;
                 const addStatusCode = additionalPage.status_code;
@@ -536,9 +548,22 @@ app.post('/scrap', async (req, res) => {
                 pageCrawled = true;
                 console.log(`✅ Successfully crawled: ${addPageUrl}`);
                 
+                // Dynamically collect more links from newly crawled pages
+                if (addLinks && addLinks.length > 0) {
+                  const newLinks = addLinks
+                    .filter(link => !link.isExternal && link.href && link.href.startsWith('http'))
+                    .map(link => link.href)
+                    .filter(href => !visitedPages.has(normalizeUrl(href)));
+                  
+                  if (newLinks.length > 0) {
+                    internalLinks.push(...newLinks);
+                    console.log(`🔗 Added ${newLinks.length} new links from ${addPageUrl}`);
+                  }
+                }
+                
               } catch (error) {
                 lastError = error;
-                console.error(`❌ Error crawling ${link.href} (attempt ${attempt}):`, error.message);
+                console.error(`❌ Error crawling ${linkUrl} (attempt ${attempt}):`, error.message);
                 
                 // Log specific error types
                 if (error.code === 'ECONNABORTED') {
@@ -556,7 +581,7 @@ app.post('/scrap', async (req, res) => {
                 // If this was the last attempt, count it as an error
                 if (attempt === retryAttempts) {
                   errorCount++;
-                  console.log(`💥 Final attempt failed for: ${link.href}`);
+                  console.log(`💥 Final attempt failed for: ${linkUrl}`);
                 }
               }
             }
@@ -589,12 +614,12 @@ app.post('/scrap', async (req, res) => {
       } catch (httpError) {
         console.error('HTTP fallback error:', httpError);
         console.log('⚠️ Both native and HTTP methods failed');
-        pages = [];
-        allLinks = [];
-        allImages = [];
-        allMetaTags = [];
-        allTechnologies = [];
-        cms = { type: 'unknown', version: null, plugins: [] };
+      pages = [];
+      allLinks = [];
+      allImages = [];
+      allMetaTags = [];
+      allTechnologies = [];
+      cms = { type: 'unknown', version: null, plugins: [] };
       }
     }
     
