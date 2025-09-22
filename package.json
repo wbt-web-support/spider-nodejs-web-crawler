@@ -55,7 +55,7 @@
   "scripts": {
     "start": "node simple-api.js",
     "dev": "node simple-api.js",
-    "build": "cargo build --release",
+    "build": "echo 'Using pre-built binary - no build needed'",
     "artifacts": "napi artifacts",
     "bench": "cd bench && npm run bench",
     "bench:oss": "cd bench && npm run bench:oss",

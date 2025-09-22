@@ -2,13 +2,13 @@
 node = { version = "18" }
 
 [phases.setup]
-nixPkgs = ["nodejs_18", "npm", "cargo", "rustc", "curl"]
+nixPkgs = ["nodejs_18", "npm", "cargo", "rustc", "gcc", "pkg-config", "openssl", "openssl.dev", "curl"]
 
 [phases.install]
 cmds = ["npm install --omit=optional --omit=dev"]
 
 [phases.build]
-cmds = ["cargo build --release"]
+cmds = ["echo 'Skipping Rust build - using pre-built binary'"]
 
 [start]
 cmd = "node simple-api.js"
