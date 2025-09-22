@@ -19,7 +19,7 @@ app.use(express.json({ limit: '100mb' }));
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 100, // 100 requests per minute per IP
+  max: 50, // 100 requests per minute per IP
   message: {
     error: 'Rate limit exceeded',
     retryAfter: '1 minute'
@@ -322,6 +322,7 @@ app.post('/scrap', async (req, res) => {
         totalImages: allImages.length,
         totalMetaTags: allMetaTags.length,
         technologiesFound: allTechnologies.length,
+        technologies: allTechnologies,
         cmsDetected: cms.type !== 'unknown'
       },
       pages: pages,

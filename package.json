@@ -53,6 +53,8 @@
     "node": ">= 10"
   },
   "scripts": {
+    "start": "node simple-api.js",
+    "dev": "node simple-api.js",
     "artifacts": "napi artifacts",
     "bench": "cd bench && npm run bench",
     "bench:oss": "cd bench && npm run bench:oss",
