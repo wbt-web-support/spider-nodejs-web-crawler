@@ -1,0 +1,14 @@
+[providers]
+node = { version = "18" }
+
+[phases.setup]
+nixPkgs = ["nodejs_18", "npm", "cargo", "rustc"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["cargo build --release"]
+
+[start]
+cmd = "npm start"

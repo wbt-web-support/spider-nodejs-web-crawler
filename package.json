@@ -55,10 +55,11 @@
   "scripts": {
     "start": "node simple-api.js",
     "dev": "node simple-api.js",
+    "build": "cargo build --release",
     "artifacts": "napi artifacts",
     "bench": "cd bench && npm run bench",
     "bench:oss": "cd bench && npm run bench:oss",
-    "build": "napi build --platform --release --pipe \"prettier -w\"",
+    "build:napi": "napi build --platform --release --pipe \"prettier -w\"",
     "build:debug": "napi build --platform --pipe \"prettier -w\"",
     "format": "run-p format:prettier format:rs format:toml",
     "format:prettier": "prettier . -w",
