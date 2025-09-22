@@ -77,7 +77,6 @@
     "singleQuote": true,
     "arrowParens": "always"
   },
-  "packageManager": "yarn@3.6.4",
   "dependencies": {
     "@spider-rs/spider-rs": "^0.0.157",
     "axios": "^1.12.2",
@@ -87,7 +86,4 @@
     "helmet": "^8.1.0",
     "morgan": "^1.10.1"
   },
-  "optionalDependencies": {
-    "@spider-rs/spider-rs-linux-x64-gnu": "^0.0.157"
-  }
 }

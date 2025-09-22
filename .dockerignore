@@ -1,5 +1,7 @@
 node_modules
 npm-debug.log
+yarn.lock
+yarn-error.log
 .git
 .gitignore
 README.md
@@ -12,3 +14,12 @@ target
 .DS_Store
 .vscode
 .idea
+*.md
+examples
+__test__
+bench
+scraped-data
+scraped-html
+storage
+*.tgz
+*.node

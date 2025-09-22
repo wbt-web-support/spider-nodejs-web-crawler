@@ -5,10 +5,10 @@ node = { version = "18" }
 nixPkgs = ["nodejs_18", "npm", "cargo", "rustc"]
 
 [phases.install]
-cmds = ["npm ci --omit=optional"]
+cmds = ["npm install --omit=optional --omit=dev"]
 
 [phases.build]
 cmds = ["cargo build --release"]
 
 [start]
-cmd = "npm start"
+cmd = "node simple-api.js"
