@@ -53,8 +53,8 @@
     "node": ">= 10"
   },
   "scripts": {
-    "start": "node test-api.js",
-    "dev": "node test-api.js",
+    "start": "node simple-api.js",
+    "dev": "node simple-api.js",
     "build": "echo 'Using pre-built binary - no build needed'",
     "artifacts": "napi artifacts",
     "bench": "cd bench && npm run bench",
