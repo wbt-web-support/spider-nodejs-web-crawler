@@ -404,11 +404,11 @@ app.post('/scrap', async (req, res) => {
           timestamp: new Date().toISOString()
         });
         
-        // For multipage mode, try to crawl additional pages
+          // For multipage mode, try to crawl additional pages
         if (mode === 'multipage' && pages.length < maxPages) {
           const internalLinks = links
             .filter(link => !link.isExternal && link.href.startsWith('http'))
-            .slice(0, maxPages - 1);
+            .slice(0, Math.min(maxPages * 2, 1000)); // Limit to prevent infinite loops
           
           console.log(`🔗 Found ${internalLinks.length} internal links to crawl`);
           
@@ -424,6 +424,26 @@ app.post('/scrap', async (req, res) => {
           const retryAttempts = isGitHub ? 3 : 2; // More retries for GitHub
           const startTime = Date.now();
           const maxCrawlTime = process.env.NODE_ENV === 'production' ? 300000 : 600000; // 5 min in prod, 10 min locally
+          
+          // Track visited pages to avoid duplicates
+          const visitedPages = new Set();
+          
+          // Function to normalize URLs for comparison
+          function normalizeUrl(url) {
+            try {
+              const urlObj = new URL(url);
+              // Remove trailing slash, normalize path, remove common query params that don't affect content
+              let normalized = `${urlObj.protocol}//${urlObj.hostname}${urlObj.pathname}`;
+              if (normalized.endsWith('/') && normalized !== `${urlObj.protocol}//${urlObj.hostname}/`) {
+                normalized = normalized.slice(0, -1);
+              }
+              return normalized.toLowerCase();
+            } catch (e) {
+              return url.toLowerCase();
+            }
+          }
+          
+          visitedPages.add(normalizeUrl(url)); // Add the main page
           
           for (const link of internalLinks) {
             if (pages.length >= maxPages) {
@@ -441,6 +461,18 @@ app.post('/scrap', async (req, res) => {
               console.log(`⏰ Maximum crawl time exceeded (${Math.round(maxCrawlTime / 1000)}s), stopping crawl`);
               break;
             }
+            
+            // Normalize the URL for comparison
+            const normalizedUrl = normalizeUrl(link.href);
+            
+            // Skip if we've already visited this page
+            if (visitedPages.has(normalizedUrl)) {
+              console.log(`⏭️ Skipping already visited page: ${link.href} (normalized: ${normalizedUrl})`);
+              continue;
+            }
+            
+            // Mark this page as visited
+            visitedPages.add(normalizedUrl);
             
             let pageCrawled = false;
             let lastError = null;
@@ -532,7 +564,8 @@ app.post('/scrap', async (req, res) => {
           
           console.log(`📊 Crawl summary: ${successCount} successful, ${errorCount} errors, ${pages.length} total pages`);
           console.log(`⏱️ Total crawl time: ${Math.round((Date.now() - startTime) / 1000)}s`);
-          console.log(`🔗 Links processed: ${internalLinks.length} available, ${pages.length - 1} crawled`);
+          console.log(`🔗 Links processed: ${internalLinks.length} available, ${pages.length - 1} crawled, ${visitedPages.size - 1} unique pages visited`);
+          console.log(`🔄 Duplicate pages skipped: ${internalLinks.length - (pages.length - 1)}`);
           
           // Log why crawling stopped
           if (pages.length >= maxPages) {
