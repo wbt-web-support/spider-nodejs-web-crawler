@@ -184,8 +184,12 @@ function detectCMS(html, url) {
 
 // HTTP fallback functions
 async function fetchPageWithAxios(url) {
+  // Shorter timeout for Coolify environment
+  const timeout = process.env.NODE_ENV === 'production' ? 15000 : 30000;
+  
   const response = await axios.get(url, {
-    timeout: 30000,
+    timeout: timeout,
+    maxRedirects: 5,
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -406,13 +410,49 @@ app.post('/scrap', async (req, res) => {
             .filter(link => !link.isExternal && link.href.startsWith('http'))
             .slice(0, maxPages - 1);
           
+          console.log(`🔗 Found ${internalLinks.length} internal links to crawl`);
+          
+          let successCount = 0;
+          let errorCount = 0;
+          const maxErrors = Math.min(10, maxPages); // Stop if too many errors
+          const startTime = Date.now();
+          const maxCrawlTime = process.env.NODE_ENV === 'production' ? 300000 : 600000; // 5 min in prod, 10 min locally
+          
           for (const link of internalLinks) {
+            if (pages.length >= maxPages) {
+              console.log(`✅ Reached max pages limit: ${maxPages}`);
+              break;
+            }
+            
+            if (errorCount >= maxErrors) {
+              console.log(`⚠️ Too many errors (${errorCount}), stopping crawl`);
+              break;
+            }
+            
+            // Check if we've exceeded the maximum crawl time
+            if (Date.now() - startTime > maxCrawlTime) {
+              console.log(`⏰ Maximum crawl time exceeded (${Math.round(maxCrawlTime / 1000)}s), stopping crawl`);
+              break;
+            }
+            
             try {
-              console.log(`📄 Crawling additional page: ${link.href}`);
+              console.log(`📄 Crawling page ${pages.length + 1}/${maxPages}: ${link.href}`);
+              
+              // Add delay between requests to avoid rate limiting
+              if (pages.length > 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+              }
+              
               const additionalPage = await fetchPageWithAxios(link.href);
               const addHtml = additionalPage.content;
               const addPageUrl = additionalPage.url;
               const addStatusCode = additionalPage.status_code;
+              
+              // Skip if page is too large (memory protection)
+              if (addHtml.length > 5 * 1024 * 1024) { // 5MB limit
+                console.log(`⚠️ Skipping large page: ${addPageUrl} (${Math.round(addHtml.length / 1024 / 1024)}MB)`);
+                continue;
+              }
               
               const addTitle = extractTitle(addHtml);
               const addLinks = extractLinksFlag ? extractLinks(addHtml, addPageUrl) : [];
@@ -440,11 +480,25 @@ app.post('/scrap', async (req, res) => {
                 timestamp: new Date().toISOString()
               });
               
-              if (pages.length >= maxPages) break;
+              successCount++;
+              console.log(`✅ Successfully crawled: ${addPageUrl}`);
+              
             } catch (error) {
-              console.error(`Error crawling ${link.href}:`, error.message);
+              errorCount++;
+              console.error(`❌ Error crawling ${link.href}:`, error.message);
+              
+              // Log specific error types
+              if (error.code === 'ECONNABORTED') {
+                console.log('⏰ Request timeout - likely rate limited');
+              } else if (error.response?.status === 429) {
+                console.log('🚫 Rate limited by server');
+              } else if (error.response?.status >= 400) {
+                console.log(`🚫 HTTP error: ${error.response.status}`);
+              }
             }
           }
+          
+          console.log(`📊 Crawl summary: ${successCount} successful, ${errorCount} errors, ${pages.length} total pages`);
         }
         
         // Remove duplicates
