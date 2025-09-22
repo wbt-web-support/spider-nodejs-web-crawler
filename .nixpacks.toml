@@ -5,7 +5,7 @@ node = { version = "18" }
 nixPkgs = ["nodejs_18", "npm", "cargo", "rustc"]
 
 [phases.install]
-cmds = ["npm ci"]
+cmds = ["npm ci --omit=optional"]
 
 [phases.build]
 cmds = ["cargo build --release"]
