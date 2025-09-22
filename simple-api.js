@@ -412,9 +412,16 @@ app.post('/scrap', async (req, res) => {
           
           console.log(`🔗 Found ${internalLinks.length} internal links to crawl`);
           
+          // Check if this is GitHub (more aggressive rate limiting)
+          const isGitHub = url.includes('github.com');
+          if (isGitHub) {
+            console.log('🐙 GitHub detected - using conservative crawling strategy');
+          }
+          
           let successCount = 0;
           let errorCount = 0;
-          const maxErrors = Math.min(10, maxPages); // Stop if too many errors
+          const maxErrors = isGitHub ? Math.min(30, maxPages) : Math.min(20, maxPages); // More tolerance for GitHub
+          const retryAttempts = isGitHub ? 3 : 2; // More retries for GitHub
           const startTime = Date.now();
           const maxCrawlTime = process.env.NODE_ENV === 'production' ? 300000 : 600000; // 5 min in prod, 10 min locally
           
@@ -435,70 +442,108 @@ app.post('/scrap', async (req, res) => {
               break;
             }
             
-            try {
-              console.log(`📄 Crawling page ${pages.length + 1}/${maxPages}: ${link.href}`);
-              
-              // Add delay between requests to avoid rate limiting
-              if (pages.length > 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
-              }
-              
-              const additionalPage = await fetchPageWithAxios(link.href);
-              const addHtml = additionalPage.content;
-              const addPageUrl = additionalPage.url;
-              const addStatusCode = additionalPage.status_code;
-              
-              // Skip if page is too large (memory protection)
-              if (addHtml.length > 5 * 1024 * 1024) { // 5MB limit
-                console.log(`⚠️ Skipping large page: ${addPageUrl} (${Math.round(addHtml.length / 1024 / 1024)}MB)`);
-                continue;
-              }
-              
-              const addTitle = extractTitle(addHtml);
-              const addLinks = extractLinksFlag ? extractLinks(addHtml, addPageUrl) : [];
-              const addImages = extractImagesFlag ? extractImages(addHtml) : [];
-              const addMetaTags = extractMeta ? extractMetaTags(addHtml) : [];
-              const addTechnologies = detectTechnologiesFlag ? detectTechnologies(addHtml, addPageUrl) : [];
-              const addTextContent = extractTextContent(addHtml);
-              
-              // Update global collections
-              allLinks.push(...addLinks.map(l => l.href));
-              allImages.push(...addImages.map(i => i.src));
-              allMetaTags.push(...addMetaTags);
-              allTechnologies.push(...addTechnologies);
-              
-              pages.push({
-                url: addPageUrl,
-                statusCode: addStatusCode,
-                title: addTitle,
-                html: addHtml,
-                content: addTextContent,
-                links: addLinks,
-                images: addImages,
-                metaTags: addMetaTags,
-                technologies: addTechnologies,
-                timestamp: new Date().toISOString()
-              });
-              
-              successCount++;
-              console.log(`✅ Successfully crawled: ${addPageUrl}`);
-              
-            } catch (error) {
-              errorCount++;
-              console.error(`❌ Error crawling ${link.href}:`, error.message);
-              
-              // Log specific error types
-              if (error.code === 'ECONNABORTED') {
-                console.log('⏰ Request timeout - likely rate limited');
-              } else if (error.response?.status === 429) {
-                console.log('🚫 Rate limited by server');
-              } else if (error.response?.status >= 400) {
-                console.log(`🚫 HTTP error: ${error.response.status}`);
+            let pageCrawled = false;
+            let lastError = null;
+            
+            // Retry mechanism for failed pages
+            for (let attempt = 1; attempt <= retryAttempts && !pageCrawled; attempt++) {
+              try {
+                if (attempt > 1) {
+                  console.log(`🔄 Retry attempt ${attempt}/${retryAttempts} for: ${link.href}`);
+                  await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay for retries
+                } else {
+                  console.log(`📄 Crawling page ${pages.length + 1}/${maxPages}: ${link.href}`);
+                  console.log(`📊 Progress: ${successCount} success, ${errorCount} errors, ${Math.round((Date.now() - startTime) / 1000)}s elapsed`);
+                }
+                
+                // Add delay between requests to avoid rate limiting
+                if (pages.length > 1) {
+                  const delay = isGitHub ? 2000 : 1000; // 2s for GitHub, 1s for others
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                }
+                
+                  const additionalPage = await fetchPageWithAxios(link.href);
+                const addHtml = additionalPage.content;
+                const addPageUrl = additionalPage.url;
+                const addStatusCode = additionalPage.status_code;
+                
+                // Skip if page is too large (memory protection)
+                if (addHtml.length > 5 * 1024 * 1024) { // 5MB limit
+                  console.log(`⚠️ Skipping large page: ${addPageUrl} (${Math.round(addHtml.length / 1024 / 1024)}MB)`);
+                  pageCrawled = true; // Mark as processed to skip retries
+                  continue;
+                }
+                
+                const addTitle = extractTitle(addHtml);
+                const addLinks = extractLinksFlag ? extractLinks(addHtml, addPageUrl) : [];
+                const addImages = extractImagesFlag ? extractImages(addHtml) : [];
+                const addMetaTags = extractMeta ? extractMetaTags(addHtml) : [];
+                const addTechnologies = detectTechnologiesFlag ? detectTechnologies(addHtml, addPageUrl) : [];
+                const addTextContent = extractTextContent(addHtml);
+                
+                // Update global collections
+                allLinks.push(...addLinks.map(l => l.href));
+                allImages.push(...addImages.map(i => i.src));
+                allMetaTags.push(...addMetaTags);
+                allTechnologies.push(...addTechnologies);
+                
+                pages.push({
+                  url: addPageUrl,
+                  statusCode: addStatusCode,
+                  title: addTitle,
+                  html: addHtml,
+                  content: addTextContent,
+                  links: addLinks,
+                  images: addImages,
+                  metaTags: addMetaTags,
+                  technologies: addTechnologies,
+                  timestamp: new Date().toISOString()
+                });
+                
+                successCount++;
+                pageCrawled = true;
+                console.log(`✅ Successfully crawled: ${addPageUrl}`);
+                
+              } catch (error) {
+                lastError = error;
+                console.error(`❌ Error crawling ${link.href} (attempt ${attempt}):`, error.message);
+                
+                // Log specific error types
+                if (error.code === 'ECONNABORTED') {
+                  console.log('⏰ Request timeout - likely rate limited');
+                } else if (error.response?.status === 429) {
+                  console.log('🚫 Rate limited by server - will retry with longer delay');
+                  // For rate limiting, wait longer before retry
+                  if (attempt < retryAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, 5000)); // 5s delay for rate limits
+                  }
+                } else if (error.response?.status >= 400) {
+                  console.log(`🚫 HTTP error: ${error.response.status}`);
+                }
+                
+                // If this was the last attempt, count it as an error
+                if (attempt === retryAttempts) {
+                  errorCount++;
+                  console.log(`💥 Final attempt failed for: ${link.href}`);
+                }
               }
             }
           }
           
           console.log(`📊 Crawl summary: ${successCount} successful, ${errorCount} errors, ${pages.length} total pages`);
+          console.log(`⏱️ Total crawl time: ${Math.round((Date.now() - startTime) / 1000)}s`);
+          console.log(`🔗 Links processed: ${internalLinks.length} available, ${pages.length - 1} crawled`);
+          
+          // Log why crawling stopped
+          if (pages.length >= maxPages) {
+            console.log(`🛑 Stopped: Reached max pages limit (${maxPages})`);
+          } else if (errorCount >= maxErrors) {
+            console.log(`🛑 Stopped: Too many errors (${errorCount}/${maxErrors})`);
+          } else if (Date.now() - startTime > maxCrawlTime) {
+            console.log(`🛑 Stopped: Timeout exceeded (${Math.round(maxCrawlTime / 1000)}s)`);
+          } else if (pages.length < internalLinks.length) {
+            console.log(`🛑 Stopped: No more valid links to crawl`);
+          }
         }
         
         // Remove duplicates
