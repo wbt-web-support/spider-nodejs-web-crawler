@@ -5,7 +5,21 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const { Website } = require('./index.js');
+const axios = require('axios');
+
+// Try to load native module, fallback to HTTP if it fails
+let Website = null;
+let useNativeModule = false;
+
+try {
+  const spiderModule = require('./index.js');
+  Website = spiderModule.Website;
+  useNativeModule = true;
+  console.log('✅ Native spider-rs module loaded successfully');
+} catch (error) {
+  console.log('⚠️ Native spider-rs module not available, using HTTP fallback');
+  console.log('Error:', error.message);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -168,6 +182,42 @@ function detectCMS(html, url) {
   return cms;
 }
 
+// HTTP fallback functions
+async function fetchPageWithAxios(url) {
+  const response = await axios.get(url, {
+    timeout: 30000,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.5',
+      'Accept-Encoding': 'gzip, deflate',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1'
+    }
+  });
+  
+  return {
+    url: url,
+    content: response.data,
+    status_code: response.status,
+    headers: response.headers
+  };
+}
+
+function extractTextContent(html) {
+  // Remove script and style elements
+  let text = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  
+  // Remove HTML tags
+  text = text.replace(/<[^>]*>/g, ' ');
+  
+  // Clean up whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+  
+  return text;
+}
+
 // Single comprehensive route
 app.post('/scrap', async (req, res) => {
   const startTime = Date.now();
@@ -213,8 +263,8 @@ app.post('/scrap', async (req, res) => {
     }
     
     console.log(`🚀 Starting ${mode} mode scrape of: ${url}`);
+    console.log(`🔧 Using ${useNativeModule ? 'native spider-rs' : 'HTTP fallback'} method`);
     
-    // Use real Rust-based spider-rs crawler
     let pages = [];
     let allLinks = [];
     let allImages = [];
@@ -222,42 +272,111 @@ app.post('/scrap', async (req, res) => {
     let allTechnologies = [];
     let cms = { type: 'unknown', version: null, plugins: [] };
     
-    try {
-      // Create website instance with budget configuration
-      const website = new Website(url).withBudget({ '*': maxPages, licenses: 0 }).build();
-      
-      // Collect pages during crawling
-      const crawledPages = [];
-      
-      const onPageEvent = (err, page) => {
-        if (err) {
-          console.error('Page crawl error:', err);
-          return;
+    if (useNativeModule) {
+      // Use real Rust-based spider-rs crawler
+      try {
+        // Create website instance with budget configuration
+        const website = new Website(url).withBudget({ '*': maxPages, licenses: 0 }).build();
+        
+        // Collect pages during crawling
+        const crawledPages = [];
+        
+        const onPageEvent = (err, page) => {
+          if (err) {
+            console.error('Page crawl error:', err);
+            return;
+          }
+          
+          console.log(`📄 Found page: ${page.url}`);
+          crawledPages.push(page);
+        };
+        
+        // Perform the actual crawling
+        await website.crawl(onPageEvent);
+        
+        // Get all links found by the spider (like in basic.mjs)
+        const spiderLinks = website.getLinks();
+        console.log(`🔗 Spider found ${spiderLinks.length} total links`);
+        
+        // Process crawled pages
+        for (const page of crawledPages) {
+          const html = page.content || '';
+          const pageUrl = page.url;
+          const statusCode = page.status_code || 200;
+          
+          // Extract data for each page
+          const title = extractTitle(html);
+          const links = extractLinksFlag ? extractLinks(html, pageUrl) : [];
+          const images = extractImagesFlag ? extractImages(html) : [];
+          const metaTags = extractMeta ? extractMetaTags(html) : [];
+          const technologies = detectTechnologiesFlag ? detectTechnologies(html, pageUrl) : [];
+          
+          // Update global collections
+          allLinks.push(...links.map(l => l.href));
+          allImages.push(...images.map(i => i.src));
+          allMetaTags.push(...metaTags);
+          allTechnologies.push(...technologies);
+          
+          // Detect CMS from first page
+          if (pages.length === 0) {
+            cms = detectCMSFlag ? detectCMS(html, pageUrl) : { type: 'unknown', version: null, plugins: [] };
+          }
+          
+          pages.push({
+            url: pageUrl,
+            statusCode: statusCode,
+            title: title,
+            html: html,
+            links: links,
+            images: images,
+            metaTags: metaTags,
+            technologies: technologies,
+            timestamp: new Date().toISOString()
+          });
+          
+          // For single page mode, break after first page
+          if (mode === 'single') {
+            break;
+          }
         }
         
-        console.log(`📄 Found page: ${page.url}`);
-        crawledPages.push(page);
-      };
-      
-      // Perform the actual crawling
-      await website.crawl(onPageEvent);
-      
-      // Get all links found by the spider (like in basic.mjs)
-      const spiderLinks = website.getLinks();
-      console.log(`🔗 Spider found ${spiderLinks.length} total links`);
-      
-      // Process crawled pages
-      for (const page of crawledPages) {
-        const html = page.content || '';
-        const pageUrl = page.url;
-        const statusCode = page.status_code || 200;
+        // Combine spider links with extracted links and remove duplicates
+        allLinks = [...new Set([...allLinks, ...spiderLinks])];
+        allImages = [...new Set(allImages)];
+        allTechnologies = [...new Set(allTechnologies)];
         
-        // Extract data for each page
+        console.log(`✅ Crawled ${pages.length} pages successfully`);
+        
+        // If no pages were crawled, return empty data instead of error
+        if (pages.length === 0) {
+          console.log('⚠️ No pages were successfully crawled');
+        }
+        
+      } catch (crawlError) {
+        console.error('Native crawling error:', crawlError);
+        console.log('⚠️ Falling back to HTTP method');
+        useNativeModule = false;
+      }
+    }
+    
+    if (!useNativeModule) {
+      // HTTP fallback method
+      try {
+        console.log('🌐 Using HTTP fallback method');
+        
+        // Fetch the main page
+        const mainPage = await fetchPageWithAxios(url);
+        const html = mainPage.content;
+        const pageUrl = mainPage.url;
+        const statusCode = mainPage.status_code;
+        
+        // Extract data for the main page
         const title = extractTitle(html);
         const links = extractLinksFlag ? extractLinks(html, pageUrl) : [];
         const images = extractImagesFlag ? extractImages(html) : [];
         const metaTags = extractMeta ? extractMetaTags(html) : [];
         const technologies = detectTechnologiesFlag ? detectTechnologies(html, pageUrl) : [];
+        const textContent = extractTextContent(html);
         
         // Update global collections
         allLinks.push(...links.map(l => l.href));
@@ -265,16 +384,15 @@ app.post('/scrap', async (req, res) => {
         allMetaTags.push(...metaTags);
         allTechnologies.push(...technologies);
         
-        // Detect CMS from first page
-        if (pages.length === 0) {
-          cms = detectCMSFlag ? detectCMS(html, pageUrl) : { type: 'unknown', version: null, plugins: [] };
-        }
+        // Detect CMS
+        cms = detectCMSFlag ? detectCMS(html, pageUrl) : { type: 'unknown', version: null, plugins: [] };
         
         pages.push({
           url: pageUrl,
           statusCode: statusCode,
           title: title,
           html: html,
+          content: textContent,
           links: links,
           images: images,
           metaTags: metaTags,
@@ -282,34 +400,70 @@ app.post('/scrap', async (req, res) => {
           timestamp: new Date().toISOString()
         });
         
-        // For single page mode, break after first page
-        if (mode === 'single') {
-          break;
+        // For multipage mode, try to crawl additional pages
+        if (mode === 'multipage' && pages.length < maxPages) {
+          const internalLinks = links
+            .filter(link => !link.isExternal && link.href.startsWith('http'))
+            .slice(0, maxPages - 1);
+          
+          for (const link of internalLinks) {
+            try {
+              console.log(`📄 Crawling additional page: ${link.href}`);
+              const additionalPage = await fetchPageWithAxios(link.href);
+              const addHtml = additionalPage.content;
+              const addPageUrl = additionalPage.url;
+              const addStatusCode = additionalPage.status_code;
+              
+              const addTitle = extractTitle(addHtml);
+              const addLinks = extractLinksFlag ? extractLinks(addHtml, addPageUrl) : [];
+              const addImages = extractImagesFlag ? extractImages(addHtml) : [];
+              const addMetaTags = extractMeta ? extractMetaTags(addHtml) : [];
+              const addTechnologies = detectTechnologiesFlag ? detectTechnologies(addHtml, addPageUrl) : [];
+              const addTextContent = extractTextContent(addHtml);
+              
+              // Update global collections
+              allLinks.push(...addLinks.map(l => l.href));
+              allImages.push(...addImages.map(i => i.src));
+              allMetaTags.push(...addMetaTags);
+              allTechnologies.push(...addTechnologies);
+              
+              pages.push({
+                url: addPageUrl,
+                statusCode: addStatusCode,
+                title: addTitle,
+                html: addHtml,
+                content: addTextContent,
+                links: addLinks,
+                images: addImages,
+                metaTags: addMetaTags,
+                technologies: addTechnologies,
+                timestamp: new Date().toISOString()
+              });
+              
+              if (pages.length >= maxPages) break;
+            } catch (error) {
+              console.error(`Error crawling ${link.href}:`, error.message);
+            }
+          }
         }
+        
+        // Remove duplicates
+        allLinks = [...new Set(allLinks)];
+        allImages = [...new Set(allImages)];
+        allTechnologies = [...new Set(allTechnologies)];
+        
+        console.log(`✅ HTTP fallback crawled ${pages.length} pages successfully`);
+        
+      } catch (httpError) {
+        console.error('HTTP fallback error:', httpError);
+        console.log('⚠️ Both native and HTTP methods failed');
+        pages = [];
+        allLinks = [];
+        allImages = [];
+        allMetaTags = [];
+        allTechnologies = [];
+        cms = { type: 'unknown', version: null, plugins: [] };
       }
-      
-      // Combine spider links with extracted links and remove duplicates
-      allLinks = [...new Set([...allLinks, ...spiderLinks])];
-      allImages = [...new Set(allImages)];
-      allTechnologies = [...new Set(allTechnologies)];
-      
-      console.log(`✅ Crawled ${pages.length} pages successfully`);
-      
-      // If no pages were crawled, return empty data instead of error
-      if (pages.length === 0) {
-        console.log('⚠️ No pages were successfully crawled');
-      }
-      
-    } catch (crawlError) {
-      console.error('Crawling error:', crawlError);
-      // Return empty data instead of throwing error
-      console.log('⚠️ Crawling failed, returning empty data');
-      pages = [];
-      allLinks = [];
-      allImages = [];
-      allMetaTags = [];
-      allTechnologies = [];
-      cms = { type: 'unknown', version: null, plugins: [] };
     }
     
     // Create comprehensive response
