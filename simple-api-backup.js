@@ -174,7 +174,7 @@ app.post('/scrap', async (req, res) => {
   try {
     const { 
       url, 
-      maxPages = 10,
+      maxPages = 500,
       extractImages = true,
       extractLinks = true,
       extractMeta = true,

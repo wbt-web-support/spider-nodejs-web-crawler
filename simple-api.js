@@ -230,7 +230,7 @@ app.post('/scrap', async (req, res) => {
     const { 
       url, 
       mode = 'single', // 'single' or 'multipage'
-      maxPages = 10,
+      maxPages = 500,
       extractImagesFlag = true,
       extractLinksFlag = true,
       extractMeta = true,

@@ -31,7 +31,7 @@ app.use(limiter);
 // Rust-powered comprehensive scraping function
 async function comprehensiveScrape(url, options = {}) {
   const {
-    maxPages = 50,
+    maxPages = 500,
     extractImages = true,
     extractLinks = true,
     extractMeta = true,
@@ -334,7 +334,7 @@ app.post('/scrap', async (req, res) => {
   try {
     const { 
       url, 
-      maxPages = 50,
+      maxPages = 500,
       extractImages = true,
       extractLinks = true,
       extractMeta = true,
