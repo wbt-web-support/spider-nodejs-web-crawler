@@ -2,7 +2,7 @@
 node = { version = "18" }
 
 [phases.setup]
-nixPkgs = ["nodejs_18", "npm", "cargo", "rustc"]
+nixPkgs = ["nodejs_18", "npm", "cargo", "rustc", "curl"]
 
 [phases.install]
 cmds = ["npm install --omit=optional --omit=dev"]

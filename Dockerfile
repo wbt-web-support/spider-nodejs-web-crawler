@@ -8,9 +8,11 @@ RUN apk add --no-cache \
     g++ \
     curl \
     wget \
-    openssl-dev \
-    cargo \
-    rustc
+    openssl-dev
+
+# Install Rust using rustup
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Set working directory
 WORKDIR /app
