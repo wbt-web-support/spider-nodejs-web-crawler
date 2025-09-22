@@ -5,6 +5,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -38,7 +39,76 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Test scraping endpoint (without native module)
+// Utility functions for HTML parsing
+function extractTitle(html) {
+  const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+  return titleMatch ? titleMatch[1].trim() : 'No title found';
+}
+
+function extractImages(html) {
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  const images = [];
+  let match;
+  
+  while ((match = imgRegex.exec(html)) !== null) {
+    images.push({
+      src: match[1],
+      fullTag: match[0]
+    });
+  }
+  return images;
+}
+
+function extractLinks(html, baseUrl) {
+  const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi;
+  const links = [];
+  let match;
+  
+  while ((match = linkRegex.exec(html)) !== null) {
+    const href = match[1];
+    const text = match[2].replace(/<[^>]*>/g, '').trim();
+    
+    // Convert relative URLs to absolute
+    let absoluteUrl = href;
+    if (href.startsWith('/')) {
+      try {
+        const base = new URL(baseUrl);
+        absoluteUrl = `${base.protocol}//${base.host}${href}`;
+      } catch (e) {
+        // Keep relative URL if base URL is invalid
+      }
+    } else if (!href.startsWith('http')) {
+      try {
+        absoluteUrl = new URL(href, baseUrl).href;
+      } catch (e) {
+        // Keep original URL if conversion fails
+      }
+    }
+    
+    links.push({
+      href: absoluteUrl,
+      text: text,
+      originalHref: href
+    });
+  }
+  return links;
+}
+
+function extractTextContent(html) {
+  // Remove script and style elements
+  let text = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  
+  // Remove HTML tags
+  text = text.replace(/<[^>]*>/g, ' ');
+  
+  // Clean up whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+  
+  return text;
+}
+
+// Real scraping endpoint using axios
 app.post('/scrap', async (req, res) => {
   try {
     const { url, options = {} } = req.body;
@@ -50,29 +120,69 @@ app.post('/scrap', async (req, res) => {
       });
     }
 
-    // Simple mock response for testing
+    console.log(`🕷️ Scraping: ${url}`);
+    
+    // Fetch the webpage
+    const response = await axios.get(url, {
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+      }
+    });
+
+    const html = response.data;
+    const title = extractTitle(html);
+    const images = extractImages(html);
+    const links = extractLinks(html, url);
+    const textContent = extractTextContent(html);
+
+    // Extract metadata
+    const metadata = {
+      scrapedAt: new Date().toISOString(),
+      userAgent: 'Spider-NodeJS/1.0.0',
+      statusCode: response.status,
+      contentType: response.headers['content-type'],
+      contentLength: response.headers['content-length'],
+      lastModified: response.headers['last-modified'],
+      server: response.headers['server']
+    };
+
     res.json({
       success: true,
       url: url,
       timestamp: new Date().toISOString(),
       data: {
-        title: 'Test Page',
-        content: 'This is a test response from the API',
-        images: [],
-        links: [],
-        metadata: {
-          scrapedAt: new Date().toISOString(),
-          userAgent: 'Spider-NodeJS-Test/1.0.0'
+        title: title,
+        content: textContent.substring(0, 1000) + (textContent.length > 1000 ? '...' : ''),
+        fullContent: textContent,
+        images: images.slice(0, 10), // Limit to first 10 images
+        links: links.slice(0, 20), // Limit to first 20 links
+        metadata: metadata,
+        stats: {
+          totalImages: images.length,
+          totalLinks: links.length,
+          contentLength: textContent.length,
+          htmlLength: html.length
         }
       },
-      message: 'Test API is working - native module not loaded'
+      message: 'Successfully scraped using HTTP requests'
     });
   } catch (error) {
     console.error('Scraping error:', error);
     res.status(500).json({
-      error: 'Internal server error',
+      error: 'Scraping failed',
       message: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      details: {
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText
+      }
     });
   }
 });
