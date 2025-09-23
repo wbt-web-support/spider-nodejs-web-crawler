@@ -279,8 +279,21 @@ app.post('/scrap', async (req, res) => {
     if (useNativeModule) {
       // Use real Rust-based spider-rs crawler
     try {
-      // Create website instance with budget configuration
-      const website = new Website(url).withBudget({ '*': maxPages, licenses: 0 }).build();
+      // For single page mode, use budget of 1 to limit crawling
+      const budget = mode === 'single' ? { '*': 1, licenses: 0 } : { '*': maxPages, licenses: 0 };
+      
+      // For single page mode, optimize configuration
+      let website = new Website(url).withBudget(budget);
+      
+      if (mode === 'single') {
+        // Optimize for single page: disable robots.txt, sitemap, and add delay
+        website = website
+          .withRespectRobotsTxt(false)  // Skip robots.txt for single page
+          .withSitemap(null)           // Disable sitemap crawling
+          .withDelay(0);               // No delay for single page
+      }
+      
+      const websiteInstance = website.build();
       
       // Collect pages during crawling
       const crawledPages = [];
@@ -293,13 +306,19 @@ app.post('/scrap', async (req, res) => {
         
         console.log(`📄 Found page: ${page.url}`);
         crawledPages.push(page);
+        
+        // For single page mode, stop crawling after first page
+        if (mode === 'single' && crawledPages.length >= 1) {
+          console.log('🛑 Single page mode: stopping crawler after first page');
+          return;
+        }
       };
       
       // Perform the actual crawling
-      await website.crawl(onPageEvent);
+      await websiteInstance.crawl(onPageEvent);
       
       // Get all links found by the spider (like in basic.mjs)
-      const spiderLinks = website.getLinks();
+      const spiderLinks = websiteInstance.getLinks();
       console.log(`🔗 Spider found ${spiderLinks.length} total links`);
       
       // Process crawled pages
@@ -735,8 +754,21 @@ app.post('/scrapImagesOnly', async (req, res) => {
     if (useNativeModule) {
       // Use real Rust-based spider-rs crawler
     try {
-      // Create website instance with budget configuration
-      const website = new Website(url).withBudget({ '*': maxPages, licenses: 0 }).build();
+      // For single page mode, use budget of 1 to limit crawling
+      const budget = mode === 'single' ? { '*': 1, licenses: 0 } : { '*': maxPages, licenses: 0 };
+      
+      // For single page mode, optimize configuration
+      let website = new Website(url).withBudget(budget);
+      
+      if (mode === 'single') {
+        // Optimize for single page: disable robots.txt, sitemap, and add delay
+        website = website
+          .withRespectRobotsTxt(false)  // Skip robots.txt for single page
+          .withSitemap(null)           // Disable sitemap crawling
+          .withDelay(0);               // No delay for single page
+      }
+      
+      const websiteInstance = website.build();
       
       // Collect pages during crawling
       const crawledPages = [];
@@ -749,10 +781,16 @@ app.post('/scrapImagesOnly', async (req, res) => {
         
         console.log(`📄 Found page: ${page.url}`);
         crawledPages.push(page);
+        
+        // For single page mode, stop crawling after first page
+        if (mode === 'single' && crawledPages.length >= 1) {
+          console.log('🛑 Single page mode: stopping crawler after first page');
+          return;
+        }
       };
       
       // Perform the actual crawling
-      await website.crawl(onPageEvent);
+      await websiteInstance.crawl(onPageEvent);
       
       // Process crawled pages
       for (const page of crawledPages) {
