@@ -267,6 +267,12 @@ app.post('/scrap', async (req, res) => {
     }
     
     console.log(`🚀 Starting ${mode} mode scrape of: ${url}`);
+    
+    // For single page mode, always use HTTP fallback for better reliability
+    if (mode === 'single') {
+      useNativeModule = false;
+    }
+    
     console.log(`🔧 Using ${useNativeModule ? 'native spider-rs' : 'HTTP fallback'} method`);
     
     let pages = [];
@@ -277,21 +283,13 @@ app.post('/scrap', async (req, res) => {
     let cms = { type: 'unknown', version: null, plugins: [] };
     
     if (useNativeModule) {
-      // Use real Rust-based spider-rs crawler
+      // Use real Rust-based spider-rs crawler for multipage mode
     try {
-      // For single page mode, use budget of 1 to limit crawling
-      const budget = mode === 'single' ? { '*': 1, licenses: 0 } : { '*': maxPages, licenses: 0 };
+      // For multipage mode, use full budget
+      const budget = { '*': maxPages, licenses: 0 };
       
-      // For single page mode, optimize configuration
+      // For multipage mode, use full configuration
       let website = new Website(url).withBudget(budget);
-      
-      if (mode === 'single') {
-        // Optimize for single page: disable robots.txt, sitemap, and add delay
-        website = website
-          .withRespectRobotsTxt(false)  // Skip robots.txt for single page
-          .withSitemap(null)           // Disable sitemap crawling
-          .withDelay(0);               // No delay for single page
-      }
       
       const websiteInstance = website.build();
       
@@ -307,11 +305,8 @@ app.post('/scrap', async (req, res) => {
         console.log(`📄 Found page: ${page.url}`);
         crawledPages.push(page);
         
-        // For single page mode, stop crawling after first page
-        if (mode === 'single' && crawledPages.length >= 1) {
-          console.log('🛑 Single page mode: stopping crawler after first page');
-          return;
-        }
+        // For single page mode, the budget limiting will handle stopping after first page
+        // We don't need to manually stop here as it prevents proper page processing
       };
       
       // Perform the actual crawling
@@ -746,27 +741,26 @@ app.post('/scrapImagesOnly', async (req, res) => {
     }
     
     console.log(`🚀 Starting ${mode} mode image scraping of: ${url}`);
+    
+    // For single page mode, always use HTTP fallback for better reliability
+    // For multipage mode, try spider-rs first, fallback to HTTP if needed
+    if (mode === 'single') {
+      useNativeModule = false;
+    }
+    
     console.log(`🔧 Using ${useNativeModule ? 'native spider-rs' : 'HTTP fallback'} method`);
     
     let pages = [];
     let allImages = [];
     
     if (useNativeModule) {
-      // Use real Rust-based spider-rs crawler
+      // Use real Rust-based spider-rs crawler for multipage mode
     try {
-      // For single page mode, use budget of 1 to limit crawling
-      const budget = mode === 'single' ? { '*': 1, licenses: 0 } : { '*': maxPages, licenses: 0 };
+      // For multipage mode, use full budget
+      const budget = { '*': maxPages, licenses: 0 };
       
-      // For single page mode, optimize configuration
+      // For multipage mode, use full configuration
       let website = new Website(url).withBudget(budget);
-      
-      if (mode === 'single') {
-        // Optimize for single page: disable robots.txt, sitemap, and add delay
-        website = website
-          .withRespectRobotsTxt(false)  // Skip robots.txt for single page
-          .withSitemap(null)           // Disable sitemap crawling
-          .withDelay(0);               // No delay for single page
-      }
       
       const websiteInstance = website.build();
       
@@ -781,16 +775,14 @@ app.post('/scrapImagesOnly', async (req, res) => {
         
         console.log(`📄 Found page: ${page.url}`);
         crawledPages.push(page);
-        
-        // For single page mode, stop crawling after first page
-        if (mode === 'single' && crawledPages.length >= 1) {
-          console.log('🛑 Single page mode: stopping crawler after first page');
-          return;
-        }
       };
       
       // Perform the actual crawling
       await websiteInstance.crawl(onPageEvent);
+      
+      // Get all links found by the spider
+      const spiderLinks = websiteInstance.getLinks();
+      console.log(`🔗 Spider found ${spiderLinks.length} total links`);
       
       // Process crawled pages
       for (const page of crawledPages) {
@@ -812,11 +804,6 @@ app.post('/scrapImagesOnly', async (req, res) => {
           images: images,
           timestamp: new Date().toISOString()
         });
-        
-        // For single page mode, break after first page
-        if (mode === 'single') {
-          break;
-        }
       }
       
       // Remove duplicates
@@ -828,6 +815,8 @@ app.post('/scrapImagesOnly', async (req, res) => {
       if (pages.length === 0) {
         console.log('⚠️ No pages were successfully crawled');
       }
+      
+      // Spider-rs crawler completed successfully
       
     } catch (crawlError) {
         console.error('Native crawling error:', crawlError);
