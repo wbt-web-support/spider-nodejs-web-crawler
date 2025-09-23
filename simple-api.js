@@ -754,7 +754,7 @@ app.post('/scrapImagesOnly', async (req, res) => {
     let allImages = [];
     
     if (useNativeModule) {
-      // Use real Rust-based spider-rs crawler for multipage mode
+      // Use real Rust-based spider-rs crawler for multipage mode   sgdsasfasfasdf
     try {
       // For multipage mode, use full budget
       const budget = { '*': maxPages, licenses: 1 };
