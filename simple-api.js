@@ -286,7 +286,7 @@ app.post('/scrap', async (req, res) => {
       // Use real Rust-based spider-rs crawler for multipage mode
     try {
       // For multipage mode, use full budget
-      const budget = { '*': maxPages, licenses: 0 };
+      const budget = { '*': maxPages, licenses: 1 };
       
       // For multipage mode, use full configuration
       let website = new Website(url).withBudget(budget);
@@ -757,7 +757,7 @@ app.post('/scrapImagesOnly', async (req, res) => {
       // Use real Rust-based spider-rs crawler for multipage mode
     try {
       // For multipage mode, use full budget
-      const budget = { '*': maxPages, licenses: 0 };
+      const budget = { '*': maxPages, licenses: 1 };
       
       // For multipage mode, use full configuration
       let website = new Website(url).withBudget(budget);
