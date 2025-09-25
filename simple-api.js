@@ -304,12 +304,15 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
     
     console.log(`🚀 Starting ${mode} mode scrape of: ${url}`);
     
+    // Determine which method to use for this specific request
+    let shouldUseNativeModule = useNativeModule; // Start with global setting
+    
     // For single page mode, always use HTTP fallback for better reliability
     if (mode === 'single') {
-      useNativeModule = false;
+      shouldUseNativeModule = false;
     }
     
-    console.log(`🔧 Using ${useNativeModule ? 'native spider-rs' : 'HTTP fallback'} method`);
+    console.log(`🔧 Using ${shouldUseNativeModule ? 'native spider-rs' : 'HTTP fallback'} method`);
     
     let pages = [];
     let allLinks = [];
@@ -318,7 +321,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
     let allTechnologies = [];
     let cms = { type: 'unknown', version: null, plugins: [] };
     
-    if (useNativeModule) {
+    if (shouldUseNativeModule) {
       // Use real Rust-based spider-rs crawler for multipage mode
     try {
       // For multipage mode, use full budget
@@ -409,11 +412,11 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
     } catch (crawlError) {
         console.error('Native crawling error:', crawlError);
         console.log('⚠️ Falling back to HTTP method');
-        useNativeModule = false;
+        shouldUseNativeModule = false;
       }
     }
     
-    if (!useNativeModule) {
+    if (!shouldUseNativeModule) {
       // HTTP fallback method
       try {
         console.log('🌐 Using HTTP fallback method');
@@ -774,19 +777,22 @@ app.post('/scrapImagesOnly', handleConcurrentRequests, async (req, res) => {
     
     console.log(`🚀 Starting ${mode} mode image scraping of: ${url}`);
     
+    // Determine which method to use for this specific request
+    let shouldUseNativeModule = useNativeModule; // Start with global setting
+    
     // For single page mode, always use HTTP fallback for better reliability
     // For multipage mode, try spider-rs first, fallback to HTTP if needed
     if (mode === 'single') {
-      useNativeModule = false;
+      shouldUseNativeModule = false;
     }
     
-    console.log(`🔧 Using ${useNativeModule ? 'native spider-rs' : 'HTTP fallback'} method`);
+    console.log(`🔧 Using ${shouldUseNativeModule ? 'native spider-rs' : 'HTTP fallback'} method`);
     
     let pages = [];
     let allImages = [];
     
-    if (useNativeModule) {
-      // Use real Rust-based spider-rs crawler for multipage mode   sgdsasfasfasdf
+    if (shouldUseNativeModule) {
+      // Use real Rust-based spider-rs crawler for multipage mode
     try {
       // For multipage mode, use full budget
       const budget = { '*': maxPages, licenses: 1 };
@@ -853,11 +859,11 @@ app.post('/scrapImagesOnly', handleConcurrentRequests, async (req, res) => {
     } catch (crawlError) {
         console.error('Native crawling error:', crawlError);
         console.log('⚠️ Falling back to HTTP method');
-        useNativeModule = false;
+        shouldUseNativeModule = false;
       }
     }
     
-    if (!useNativeModule) {
+    if (!shouldUseNativeModule) {
       // HTTP fallback method
       try {
         console.log('🌐 Using HTTP fallback method');
