@@ -24,20 +24,56 @@ try {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Concurrent request limiting
+let activeRequests = 0;
+const MAX_CONCURRENT_REQUESTS = 50; // Limit concurrent scraping requests
+const requestQueue = [];
+
+// Middleware to handle concurrent request limiting
+function handleConcurrentRequests(req, res, next) {
+  if (activeRequests >= MAX_CONCURRENT_REQUESTS) {
+    // Queue the request instead of rejecting it
+    return new Promise((resolve) => {
+      requestQueue.push({ req, res, next, resolve });
+    });
+  }
+  
+  activeRequests++;
+  next();
+  
+  // Decrease counter when response is sent
+  res.on('finish', () => {
+    activeRequests--;
+    processQueue();
+  });
+}
+
+// Process queued requests
+function processQueue() {
+  if (requestQueue.length > 0 && activeRequests < MAX_CONCURRENT_REQUESTS) {
+    const { req, res, next, resolve } = requestQueue.shift();
+    activeRequests++;
+    resolve();
+    next();
+  }
+}
+
 // Middleware
 app.use(helmet());
 app.use(cors());
 app.use(morgan('combined'));
 app.use(express.json({ limit: '100mb' }));
 
-// Rate limiting
+// Rate limiting - Updated for high concurrency
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 50, // 100 requests per minute per IP
+  max: 300, // 300 requests per minute per IP (increased for concurrent users)
   message: {
     error: 'Rate limit exceeded',
     retryAfter: '1 minute'
-  }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 app.use(limiter);
@@ -184,8 +220,8 @@ function detectCMS(html, url) {
 
 // HTTP fallback functions
 async function fetchPageWithAxios(url) {
-  // Shorter timeout for Coolify environment
-  const timeout = process.env.NODE_ENV === 'production' ? 15000 : 30000;
+  // Optimized timeouts for concurrent handling
+  const timeout = process.env.NODE_ENV === 'production' ? 10000 : 15000; // Reduced timeouts
   
   const response = await axios.get(url, {
     timeout: timeout,
@@ -223,7 +259,7 @@ function extractTextContent(html) {
 }
 
 // Single comprehensive route
-app.post('/scrap', async (req, res) => {
+app.post('/scrap', handleConcurrentRequests, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -449,7 +485,7 @@ app.post('/scrap', async (req, res) => {
           const maxErrors = Math.min(maxPages * 0.3, 100); // 30% of maxPages or 100, whichever is smaller
           const retryAttempts = isGitHub ? 3 : 2; // More retries for GitHub
           const startTime = Date.now();
-          const maxCrawlTime = process.env.NODE_ENV === 'production' ? 600000 : 1200000; // 10 min in prod, 20 min locally
+          const maxCrawlTime = process.env.NODE_ENV === 'production' ? 300000 : 600000; // 5 min in prod, 10 min locally (reduced for concurrency)
           
           // Track visited pages to avoid duplicates
           const visitedPages = new Set();
@@ -508,25 +544,21 @@ app.post('/scrap', async (req, res) => {
               try {
                 if (attempt > 1) {
                   console.log(`🔄 Retry attempt ${attempt}/${retryAttempts} for: ${linkUrl}`);
-                  await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay for retries
+                  // Removed retry delay for faster processing
                 } else {
                   console.log(`📄 Crawling page ${pages.length + 1}/${maxPages}: ${linkUrl}`);
                   console.log(`📊 Progress: ${successCount} success, ${errorCount} errors, ${Math.round((Date.now() - startTime) / 1000)}s elapsed`);
                 }
                 
-                // Add delay between requests to avoid rate limiting
-                if (pages.length > 1) {
-                  const delay = isGitHub ? 2000 : 1000; // 2s for GitHub, 1s for others
-                  await new Promise(resolve => setTimeout(resolve, delay));
-                }
+                // Removed delay between requests for faster scraping
                 
                   const additionalPage = await fetchPageWithAxios(linkUrl);
                 const addHtml = additionalPage.content;
                 const addPageUrl = additionalPage.url;
                 const addStatusCode = additionalPage.status_code;
                 
-                // Skip if page is too large (memory protection)
-                if (addHtml.length > 5 * 1024 * 1024) { // 5MB limit
+                // Skip if page is too large (memory protection) - Reduced for concurrency
+                if (addHtml.length > 2 * 1024 * 1024) { // 2MB limit (reduced from 5MB for better concurrency)
                   console.log(`⚠️ Skipping large page: ${addPageUrl} (${Math.round(addHtml.length / 1024 / 1024)}MB)`);
                   pageCrawled = true; // Mark as processed to skip retries
                   continue;
@@ -586,7 +618,7 @@ app.post('/scrap', async (req, res) => {
                   console.log('🚫 Rate limited by server - will retry with longer delay');
                   // For rate limiting, wait longer before retry
                   if (attempt < retryAttempts) {
-                    await new Promise(resolve => setTimeout(resolve, 5000)); // 5s delay for rate limits
+                    // Removed rate limit delay for faster processing
                   }
                 } else if (error.response?.status >= 400) {
                   console.log(`🚫 HTTP error: ${error.response.status}`);
@@ -697,7 +729,7 @@ app.post('/scrap', async (req, res) => {
   }
 });
 // get filtered images only
-app.post('/scrapImagesOnly', async (req, res) => {
+app.post('/scrapImagesOnly', handleConcurrentRequests, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -882,7 +914,7 @@ app.post('/scrapImagesOnly', async (req, res) => {
           const maxErrors = Math.min(maxPages * 0.3, 100); // 30% of maxPages or 100, whichever is smaller
           const retryAttempts = isGitHub ? 3 : 2; // More retries for GitHub
           const startTime = Date.now();
-          const maxCrawlTime = process.env.NODE_ENV === 'production' ? 600000 : 1200000; // 10 min in prod, 20 min locally
+          const maxCrawlTime = process.env.NODE_ENV === 'production' ? 300000 : 600000; // 5 min in prod, 10 min locally (reduced for concurrency)
           
           // Track visited pages to avoid duplicates
           const visitedPages = new Set();
@@ -941,25 +973,21 @@ app.post('/scrapImagesOnly', async (req, res) => {
               try {
                 if (attempt > 1) {
                   console.log(`🔄 Retry attempt ${attempt}/${retryAttempts} for: ${linkUrl}`);
-                  await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay for retries
+                  // Removed retry delay for faster processing
                 } else {
                   console.log(`📄 Crawling page ${pages.length + 1}/${maxPages}: ${linkUrl}`);
                   console.log(`📊 Progress: ${successCount} success, ${errorCount} errors, ${Math.round((Date.now() - startTime) / 1000)}s elapsed`);
                 }
                 
-                // Add delay between requests to avoid rate limiting
-                if (pages.length > 1) {
-                  const delay = isGitHub ? 2000 : 1000; // 2s for GitHub, 1s for others
-                  await new Promise(resolve => setTimeout(resolve, delay));
-                }
+                // Removed delay between requests for faster scraping
                 
                   const additionalPage = await fetchPageWithAxios(linkUrl);
                 const addHtml = additionalPage.content;
                 const addPageUrl = additionalPage.url;
                 const addStatusCode = additionalPage.status_code;
                 
-                // Skip if page is too large (memory protection)
-                if (addHtml.length > 5 * 1024 * 1024) { // 5MB limit
+                // Skip if page is too large (memory protection) - Reduced for concurrency
+                if (addHtml.length > 2 * 1024 * 1024) { // 2MB limit (reduced from 5MB for better concurrency)
                   console.log(`⚠️ Skipping large page: ${addPageUrl} (${Math.round(addHtml.length / 1024 / 1024)}MB)`);
                   pageCrawled = true; // Mark as processed to skip retries
                   continue;
@@ -994,7 +1022,7 @@ app.post('/scrapImagesOnly', async (req, res) => {
                   console.log('🚫 Rate limited by server - will retry with longer delay');
                   // For rate limiting, wait longer before retry
                   if (attempt < retryAttempts) {
-                    await new Promise(resolve => setTimeout(resolve, 5000)); // 5s delay for rate limits
+                    // Removed rate limit delay for faster processing
                   }
                 } else if (error.response?.status >= 400) {
                   console.log(`🚫 HTTP error: ${error.response.status}`);
@@ -1089,6 +1117,19 @@ app.get('/health', (req, res) => {
     message: 'Comprehensive scraper API is running',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
+  });
+});
+
+// Status endpoint to monitor concurrent requests
+app.get('/status', (req, res) => {
+  res.json({
+    status: 'OK',
+    activeRequests: activeRequests,
+    maxConcurrentRequests: MAX_CONCURRENT_REQUESTS,
+    queuedRequests: requestQueue.length,
+    memoryUsage: process.memoryUsage(),
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
   });
 });
 
