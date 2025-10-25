@@ -139,6 +139,64 @@ function extractTitle(html) {
   return titleMatch ? titleMatch[1].trim() : 'No title found';
 }
 
+function extractFavicon(html, baseUrl) {
+  const favicons = [];
+  
+  // Look for various favicon link patterns
+  const faviconRegex = /<link[^>]+rel=["'](?:icon|shortcut icon|apple-touch-icon)["'][^>]*>/gi;
+  let match;
+  
+  while ((match = faviconRegex.exec(html)) !== null) {
+    const linkTag = match[0];
+    
+    // Extract href attribute
+    const hrefMatch = linkTag.match(/href=["']([^"']+)["']/i);
+    if (hrefMatch) {
+      let href = hrefMatch[1];
+      
+      // Convert relative URLs to absolute
+      if (href.startsWith('/')) {
+        const url = new URL(baseUrl);
+        href = `${url.protocol}//${url.host}${href}`;
+      } else if (!href.startsWith('http')) {
+        href = new URL(href, baseUrl).href;
+      }
+      
+      // Extract additional attributes
+      const sizesMatch = linkTag.match(/sizes=["']([^"']+)["']/i);
+      const typeMatch = linkTag.match(/type=["']([^"']+)["']/i);
+      const relMatch = linkTag.match(/rel=["']([^"']+)["']/i);
+      
+      favicons.push({
+        href: href,
+        sizes: sizesMatch ? sizesMatch[1] : null,
+        type: typeMatch ? typeMatch[1] : null,
+        rel: relMatch ? relMatch[1] : 'icon',
+        fullTag: linkTag
+      });
+    }
+  }
+  
+  // Also check for default favicon.ico at root
+  const defaultFavicon = `${new URL(baseUrl).origin}/favicon.ico`;
+  
+  // Check if default favicon is already in our list
+  const hasDefaultFavicon = favicons.some(fav => fav.href === defaultFavicon);
+  
+  if (!hasDefaultFavicon) {
+    favicons.push({
+      href: defaultFavicon,
+      sizes: null,
+      type: 'image/x-icon',
+      rel: 'icon',
+      fullTag: null,
+      isDefault: true
+    });
+  }
+  
+  return favicons;
+}
+
 function detectTechnologies(html, url) {
   const technologies = [];
   
@@ -319,6 +377,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
     let allImages = [];
     let allMetaTags = [];
     let allTechnologies = [];
+    let allFavicons = [];
     let cms = { type: 'unknown', version: null, plugins: [] };
     
     if (shouldUseNativeModule) {
@@ -367,12 +426,14 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
         const images = extractImagesFlag ? extractImages(html) : [];
         const metaTags = extractMeta ? extractMetaTags(html) : [];
         const technologies = detectTechnologiesFlag ? detectTechnologies(html, pageUrl) : [];
+        const favicons = extractFavicon(html, pageUrl);
         
         // Update global collections
         allLinks.push(...links.map(l => l.href));
         allImages.push(...images.map(i => i.src));
         allMetaTags.push(...metaTags);
         allTechnologies.push(...technologies);
+        allFavicons.push(...favicons);
         
         // Detect CMS from first page
         if (pages.length === 0) {
@@ -388,6 +449,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
           images: images,
           metaTags: metaTags,
           technologies: technologies,
+          favicons: favicons,
           timestamp: new Date().toISOString()
         });
         
@@ -401,6 +463,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
       allLinks = [...new Set([...allLinks, ...spiderLinks])];
       allImages = [...new Set(allImages)];
       allTechnologies = [...new Set(allTechnologies)];
+      allFavicons = [...new Set(allFavicons.map(f => JSON.stringify(f)))].map(f => JSON.parse(f));
       
       console.log(`✅ Crawled ${pages.length} pages successfully`);
       
@@ -433,6 +496,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
         const images = extractImagesFlag ? extractImages(html) : [];
         const metaTags = extractMeta ? extractMetaTags(html) : [];
         const technologies = detectTechnologiesFlag ? detectTechnologies(html, pageUrl) : [];
+        const favicons = extractFavicon(html, pageUrl);
         const textContent = extractTextContent(html);
         
         // Update global collections
@@ -440,6 +504,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
         allImages.push(...images.map(i => i.src));
         allMetaTags.push(...metaTags);
         allTechnologies.push(...technologies);
+        allFavicons.push(...favicons);
         
         // Detect CMS
         cms = detectCMSFlag ? detectCMS(html, pageUrl) : { type: 'unknown', version: null, plugins: [] };
@@ -454,6 +519,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
           images: images,
           metaTags: metaTags,
           technologies: technologies,
+          favicons: favicons,
           timestamp: new Date().toISOString()
         });
         
@@ -572,6 +638,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
                 const addImages = extractImagesFlag ? extractImages(addHtml) : [];
                 const addMetaTags = extractMeta ? extractMetaTags(addHtml) : [];
                 const addTechnologies = detectTechnologiesFlag ? detectTechnologies(addHtml, addPageUrl) : [];
+                const addFavicons = extractFavicon(addHtml, addPageUrl);
                 const addTextContent = extractTextContent(addHtml);
                 
                 // Update global collections
@@ -579,6 +646,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
                 allImages.push(...addImages.map(i => i.src));
                 allMetaTags.push(...addMetaTags);
                 allTechnologies.push(...addTechnologies);
+                allFavicons.push(...addFavicons);
                 
                 pages.push({
                   url: addPageUrl,
@@ -590,6 +658,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
                   images: addImages,
                   metaTags: addMetaTags,
                   technologies: addTechnologies,
+                  favicons: addFavicons,
                   timestamp: new Date().toISOString()
                 });
                 
@@ -657,6 +726,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
         allLinks = [...new Set(allLinks)];
         allImages = [...new Set(allImages)];
         allTechnologies = [...new Set(allTechnologies)];
+        allFavicons = [...new Set(allFavicons.map(f => JSON.stringify(f)))].map(f => JSON.parse(f));
         
         console.log(`✅ HTTP fallback crawled ${pages.length} pages successfully`);
         
@@ -668,6 +738,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
       allImages = [];
       allMetaTags = [];
       allTechnologies = [];
+      allFavicons = [];
       cms = { type: 'unknown', version: null, plugins: [] };
       }
     }
@@ -681,8 +752,10 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
         totalLinks: allLinks.length,
         totalImages: allImages.length,
         totalMetaTags: allMetaTags.length,
+        totalFavicons: allFavicons.length,
         technologiesFound: allTechnologies.length,
         technologies: allTechnologies,
+        favicons: allFavicons,
         cmsDetected: cms.type !== 'unknown'
       },
       pages: pages,
@@ -691,6 +764,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
         images: allImages,
         metaTags: allMetaTags,
         technologies: allTechnologies,
+        favicons: allFavicons,
         cms: cms
       },
       performance: {
@@ -704,7 +778,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
     };
     
     console.log(`✅ Scraping completed in ${result.responseTime}ms`);
-    console.log(`📄 Pages: ${result.summary.totalPages}, Links: ${result.summary.totalLinks}, Images: ${result.summary.totalImages}`);
+    console.log(`📄 Pages: ${result.summary.totalPages}, Links: ${result.summary.totalLinks}, Images: ${result.summary.totalImages}, Favicons: ${result.summary.totalFavicons}`);
     
     if (result.extractedData.technologies.length > 0) {
       console.log(`🔧 Technologies: ${result.extractedData.technologies.join(', ')}`);
@@ -732,389 +806,7 @@ app.post('/scrap', handleConcurrentRequests, async (req, res) => {
   }
 });
 // get filtered images only
-app.post('/scrapImagesOnly', handleConcurrentRequests, async (req, res) => {
-  const startTime = Date.now();
-  
-  try {
-    const { 
-      url, 
-      mode = 'single', // 'single' or 'multipage'
-      maxPages = 500,
-      extractImagesFlag = true,
-      extractLinksFlag = false, // Disable links extraction for images-only
-      extractMeta = false, // Disable meta extraction for images-only
-      detectTechnologiesFlag = false, // Disable technology detection for images-only
-      detectCMSFlag = false // Disable CMS detection for images-only
-    } = req.body;
-    
-    // Validate URL
-    if (!url) {
-      return res.status(400).json({
-        error: 'URL is required',
-        code: 'MISSING_URL',
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    try {
-      new URL(url);
-    } catch {
-      return res.status(400).json({
-        error: 'Invalid URL format',
-        code: 'INVALID_URL',
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    // Validate mode
-    if (!['single', 'multipage'].includes(mode)) {
-      return res.status(400).json({
-        error: 'Mode must be either "single" or "multipage"',
-        code: 'INVALID_MODE',
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    console.log(`🚀 Starting ${mode} mode image scraping of: ${url}`);
-    
-    // Determine which method to use for this specific request
-    let shouldUseNativeModule = useNativeModule; // Start with global setting
-    
-    // For single page mode, always use HTTP fallback for better reliability
-    // For multipage mode, try spider-rs first, fallback to HTTP if needed
-    if (mode === 'single') {
-      shouldUseNativeModule = false;
-    }
-    
-    console.log(`🔧 Using ${shouldUseNativeModule ? 'native spider-rs' : 'HTTP fallback'} method`);
-    
-    let pages = [];
-    let allImages = [];
-    
-    if (shouldUseNativeModule) {
-      // Use real Rust-based spider-rs crawler for multipage mode
-    try {
-      // For multipage mode, use full budget
-      const budget = { '*': maxPages, licenses: 1 };
-      
-      // For multipage mode, use full configuration
-      let website = new Website(url).withBudget(budget);
-      
-      const websiteInstance = website.build();
-      
-      // Collect pages during crawling
-      const crawledPages = [];
-      
-      const onPageEvent = (err, page) => {
-        if (err) {
-          console.error('Page crawl error:', err);
-          return;
-        }
-        
-        console.log(`📄 Found page: ${page.url}`);
-        crawledPages.push(page);
-      };
-      
-      // Perform the actual crawling
-      await websiteInstance.crawl(onPageEvent);
-      
-      // Get all links found by the spider
-      const spiderLinks = websiteInstance.getLinks();
-      console.log(`🔗 Spider found ${spiderLinks.length} total links`);
-      
-      // Process crawled pages
-      for (const page of crawledPages) {
-        const html = page.content || '';
-        const pageUrl = page.url;
-        const statusCode = page.status_code || 200;
-        
-        // Extract only images for each page
-        const title = extractTitle(html);
-        const images = extractImagesFlag ? extractImages(html) : [];
-        
-        // Update global collections
-        allImages.push(...images.map(i => i.src));
-        
-        pages.push({
-          url: pageUrl,
-          statusCode: statusCode,
-          title: title,
-          images: images,
-          timestamp: new Date().toISOString()
-        });
-      }
-      
-      // Remove duplicates
-      allImages = [...new Set(allImages)];
-      
-      console.log(`✅ Crawled ${pages.length} pages successfully`);
-      
-      // If no pages were crawled, return empty data instead of error
-      if (pages.length === 0) {
-        console.log('⚠️ No pages were successfully crawled');
-      }
-      
-      // Spider-rs crawler completed successfully
-      
-    } catch (crawlError) {
-        console.error('Native crawling error:', crawlError);
-        console.log('⚠️ Falling back to HTTP method');
-        shouldUseNativeModule = false;
-      }
-    }
-    
-    if (!shouldUseNativeModule) {
-      // HTTP fallback method
-      try {
-        console.log('🌐 Using HTTP fallback method');
-        
-        // Fetch the main page
-        const mainPage = await fetchPageWithAxios(url);
-        const html = mainPage.content;
-        const pageUrl = mainPage.url;
-        const statusCode = mainPage.status_code;
-        
-        // Extract only images for the main page
-        const title = extractTitle(html);
-        const images = extractImagesFlag ? extractImages(html) : [];
-        
-        // Update global collections
-        allImages.push(...images.map(i => i.src));
-        
-        pages.push({
-          url: pageUrl,
-          statusCode: statusCode,
-          title: title,
-          images: images,
-          timestamp: new Date().toISOString()
-        });
-        
-          // For multipage mode, try to crawl additional pages
-        if (mode === 'multipage' && pages.length < maxPages) {
-          // Function to collect all internal links from pages
-          function collectInternalLinks(pages) {
-            let allLinks = [];
-            for (const page of pages) {
-              if (page.links && page.links.length > 0) {
-                allLinks.push(...page.links);
-              }
-            }
-            return allLinks
-              .filter(link => !link.isExternal && link.href && link.href.startsWith('http'))
-              .map(link => link.href)
-              .filter((href, index, self) => self.indexOf(href) === index); // Remove duplicates
-          }
-          
-          // Initial collection of links
-          let internalLinks = collectInternalLinks(pages);
-          console.log(`🔗 Found ${internalLinks.length} internal links to crawl (from ${pages.length} pages)`);
-          
-          // Check if this is GitHub (more aggressive rate limiting)
-          const isGitHub = url.includes('github.com');
-          if (isGitHub) {
-            console.log('🐙 GitHub detected - using conservative crawling strategy');
-          }
-          
-          let successCount = 0;
-          let errorCount = 0;
-          const maxErrors = Math.min(maxPages * 0.3, 100); // 30% of maxPages or 100, whichever is smaller
-          const retryAttempts = isGitHub ? 3 : 2; // More retries for GitHub
-          const startTime = Date.now();
-          const maxCrawlTime = process.env.NODE_ENV === 'production' ? 300000 : 600000; // 5 min in prod, 10 min locally (reduced for concurrency)
-          
-          // Track visited pages to avoid duplicates
-          const visitedPages = new Set();
-          
-          // Function to normalize URLs for comparison
-          function normalizeUrl(url) {
-            try {
-              const urlObj = new URL(url);
-              // Remove trailing slash, normalize path, remove common query params that don't affect content
-              let normalized = `${urlObj.protocol}//${urlObj.hostname}${urlObj.pathname}`;
-              if (normalized.endsWith('/') && normalized !== `${urlObj.protocol}//${urlObj.hostname}/`) {
-                normalized = normalized.slice(0, -1);
-              }
-              return normalized.toLowerCase();
-            } catch (e) {
-              return url.toLowerCase();
-            }
-          }
-          
-          visitedPages.add(normalizeUrl(url)); // Add the main page
-          
-          for (const linkUrl of internalLinks) {
-            if (pages.length >= maxPages) {
-              console.log(`✅ Reached max pages limit: ${maxPages}`);
-              break;
-            }
-            
-            if (errorCount >= maxErrors) {
-              console.log(`⚠️ Too many errors (${errorCount}), stopping crawl`);
-              break;
-            }
-            
-            // Check if we've exceeded the maximum crawl time
-            if (Date.now() - startTime > maxCrawlTime) {
-              console.log(`⏰ Maximum crawl time exceeded (${Math.round(maxCrawlTime / 1000)}s), stopping crawl`);
-              break;
-            }
-            
-            // Normalize the URL for comparison
-            const normalizedUrl = normalizeUrl(linkUrl);
-            
-            // Skip if we've already visited this page
-            if (visitedPages.has(normalizedUrl)) {
-              console.log(`⏭️ Skipping already visited page: ${linkUrl} (normalized: ${normalizedUrl})`);
-              continue;
-            }
-            
-            // Mark this page as visited
-            visitedPages.add(normalizedUrl);
-            
-            let pageCrawled = false;
-            let lastError = null;
-            
-            // Retry mechanism for failed pages
-            for (let attempt = 1; attempt <= retryAttempts && !pageCrawled; attempt++) {
-              try {
-                if (attempt > 1) {
-                  console.log(`🔄 Retry attempt ${attempt}/${retryAttempts} for: ${linkUrl}`);
-                  // Removed retry delay for faster processing
-                } else {
-                  console.log(`📄 Crawling page ${pages.length + 1}/${maxPages}: ${linkUrl}`);
-                  console.log(`📊 Progress: ${successCount} success, ${errorCount} errors, ${Math.round((Date.now() - startTime) / 1000)}s elapsed`);
-                }
-                
-                // Removed delay between requests for faster scraping
-                
-                  const additionalPage = await fetchPageWithAxios(linkUrl);
-                const addHtml = additionalPage.content;
-                const addPageUrl = additionalPage.url;
-                const addStatusCode = additionalPage.status_code;
-                
-                // Skip if page is too large (memory protection) - Reduced for concurrency
-                if (addHtml.length > 2 * 1024 * 1024) { // 2MB limit (reduced from 5MB for better concurrency)
-                  console.log(`⚠️ Skipping large page: ${addPageUrl} (${Math.round(addHtml.length / 1024 / 1024)}MB)`);
-                  pageCrawled = true; // Mark as processed to skip retries
-                  continue;
-                }
-                
-                const addTitle = extractTitle(addHtml);
-                const addImages = extractImagesFlag ? extractImages(addHtml) : [];
-                
-                // Update global collections
-                allImages.push(...addImages.map(i => i.src));
-                
-                pages.push({
-                  url: addPageUrl,
-                  statusCode: addStatusCode,
-                  title: addTitle,
-                  images: addImages,
-                  timestamp: new Date().toISOString()
-                });
-                
-                successCount++;
-                pageCrawled = true;
-                console.log(`✅ Successfully crawled: ${addPageUrl}`);
-                
-              } catch (error) {
-                lastError = error;
-                console.error(`❌ Error crawling ${linkUrl} (attempt ${attempt}):`, error.message);
-                
-                // Log specific error types
-                if (error.code === 'ECONNABORTED') {
-                  console.log('⏰ Request timeout - likely rate limited');
-                } else if (error.response?.status === 429) {
-                  console.log('🚫 Rate limited by server - will retry with longer delay');
-                  // For rate limiting, wait longer before retry
-                  if (attempt < retryAttempts) {
-                    // Removed rate limit delay for faster processing
-                  }
-                } else if (error.response?.status >= 400) {
-                  console.log(`🚫 HTTP error: ${error.response.status}`);
-                }
-                
-                // If this was the last attempt, count it as an error
-                if (attempt === retryAttempts) {
-                  errorCount++;
-                  console.log(`💥 Final attempt failed for: ${linkUrl}`);
-                }
-              }
-            }
-          }
-          
-          console.log(`📊 Crawl summary: ${successCount} successful, ${errorCount} errors, ${pages.length} total pages`);
-          console.log(`⏱️ Total crawl time: ${Math.round((Date.now() - startTime) / 1000)}s`);
-          console.log(`🔗 Links processed: ${internalLinks.length} available, ${pages.length - 1} crawled, ${visitedPages.size - 1} unique pages visited`);
-          console.log(`🔄 Duplicate pages skipped: ${internalLinks.length - (pages.length - 1)}`);
-          
-          // Log why crawling stopped
-          if (pages.length >= maxPages) {
-            console.log(`🛑 Stopped: Reached max pages limit (${maxPages})`);
-          } else if (errorCount >= maxErrors) {
-            console.log(`🛑 Stopped: Too many errors (${errorCount}/${maxErrors})`);
-          } else if (Date.now() - startTime > maxCrawlTime) {
-            console.log(`🛑 Stopped: Timeout exceeded (${Math.round(maxCrawlTime / 1000)}s)`);
-          } else if (pages.length < internalLinks.length) {
-            console.log(`🛑 Stopped: No more valid links to crawl`);
-          }
-        }
-        
-        // Remove duplicates
-        allImages = [...new Set(allImages)];
-        
-        console.log(`✅ HTTP fallback crawled ${pages.length} pages successfully`);
-        
-      } catch (httpError) {
-        console.error('HTTP fallback error:', httpError);
-        console.log('⚠️ Both native and HTTP methods failed');
-      pages = [];
-      allImages = [];
-      }
-    }
-    
-    // Create images-only response
-    const result = {
-      url: url,
-      mode: mode,
-      summary: {
-        totalPages: pages.length,
-        totalImages: allImages.length
-      },
-      images: allImages,
-      pages: pages.map(page => ({
-        url: page.url,
-        statusCode: page.statusCode,
-        title: page.title,
-        images: page.images,
-        timestamp: page.timestamp
-      })),
-      performance: {
-        startTime: new Date().toISOString(),
-        endTime: new Date().toISOString(),
-        totalTime: Date.now() - startTime,
-        pagesPerSecond: pages.length / ((Date.now() - startTime) / 1000)
-      },
-      responseTime: Date.now() - startTime,
-      timestamp: new Date().toISOString()
-    };
-    
-    console.log(`✅ Images scraping completed in ${result.responseTime}ms`);
-    console.log(`📄 Pages: ${result.summary.totalPages}, Images: ${result.summary.totalImages}`);
-    
-    res.json(result);
-    
-  } catch (error) {
-    console.error('Scraping error:', error);
-    res.status(500).json({
-      error: 'Scraping failed',
-      message: error.message,
-      code: 'SCRAPING_ERROR',
-      responseTime: Date.now() - startTime,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
+
 
 // Health check
 app.get('/health', (req, res) => {
