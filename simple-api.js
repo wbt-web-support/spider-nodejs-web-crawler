@@ -142,7 +142,7 @@ function extractTitle(html) {
 function extractFavicon(html, baseUrl) {
   const favicons = [];
   
-  // Look for various favicon link patterns sdfasdf
+  // Look for various favicon link patterns 
   const faviconRegex = /<link[^>]+rel=["'](?:icon|shortcut icon|apple-touch-icon)["'][^>]*>/gi;
   let match;
   
